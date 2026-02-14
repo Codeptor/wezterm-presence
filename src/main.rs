@@ -24,6 +24,12 @@ fn main() {
         return;
     }
 
+    // Handle `install` subcommand: create startup shortcut
+    if std::env::args().nth(1).as_deref() == Some("install") {
+        install_startup();
+        return;
+    }
+
     let config = config::Config::load();
 
     if config.discord_app_id.is_empty() || config.discord_app_id == "YOUR_APP_ID" {
@@ -72,4 +78,31 @@ fn main() {
 
         thread::sleep(poll_interval);
     }
+}
+
+fn install_startup() {
+    let exe_path = std::env::current_exe().expect("Failed to get executable path");
+
+    let startup_dir = dirs::config_dir()
+        .map(|p| {
+            p.parent()
+                .unwrap()
+                .join("Roaming")
+                .join("Microsoft")
+                .join("Windows")
+                .join("Start Menu")
+                .join("Programs")
+                .join("Startup")
+        })
+        .expect("Failed to find startup directory");
+
+    let vbs_path = startup_dir.join("wezterm-presence.vbs");
+    let vbs_content = format!(
+        "Set WshShell = CreateObject(\"WScript.Shell\")\nWshShell.Run \"\"\"{}\"\"\", 0, False",
+        exe_path.display()
+    );
+
+    std::fs::write(&vbs_path, vbs_content).expect("Failed to write startup script");
+    eprintln!("Installed auto-start to: {}", vbs_path.display());
+    eprintln!("wezterm-presence will start automatically on login.");
 }

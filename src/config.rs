@@ -62,6 +62,39 @@ impl Default for Config {
 }
 
 impl Config {
+    /// Write a default config.toml to the given path.
+    pub fn write_default(path: &std::path::Path) -> std::io::Result<()> {
+        let content = r#"# WezTerm Discord Rich Presence Config
+# Get your Discord Application ID from https://discord.com/developers/applications
+discord_app_id = "YOUR_APP_ID"
+
+# Poll interval in seconds
+poll_interval = 3
+
+# Process name -> display text and icon mappings
+# Icon names must match assets uploaded to your Discord application
+[processes]
+claude = { text = "Using Claude Code", icon = "claude" }
+nvim = { text = "Editing in Neovim", icon = "neovim" }
+vim = { text = "Editing in Vim", icon = "vim" }
+cargo = { text = "Building with Cargo", icon = "rust" }
+rustc = { text = "Compiling Rust", icon = "rust" }
+zsh = { text = "In the Shell", icon = "terminal" }
+bash = { text = "In the Shell", icon = "terminal" }
+fish = { text = "In the Shell", icon = "terminal" }
+python = { text = "Running Python", icon = "python" }
+python3 = { text = "Running Python", icon = "python" }
+node = { text = "Running Node.js", icon = "nodejs" }
+git = { text = "Using Git", icon = "git" }
+docker = { text = "Running Docker", icon = "docker" }
+ssh = { text = "Connected via SSH", icon = "ssh" }
+htop = { text = "Monitoring System", icon = "terminal" }
+btop = { text = "Monitoring System", icon = "terminal" }
+make = { text = "Running Make", icon = "terminal" }
+"#;
+        std::fs::write(path, content)
+    }
+
     pub fn load() -> Self {
         let path = Self::config_path();
         match std::fs::read_to_string(&path) {

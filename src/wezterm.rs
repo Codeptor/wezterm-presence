@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::process::Command;
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct Pane {
     pub window_id: u64,
     pub tab_id: u64,

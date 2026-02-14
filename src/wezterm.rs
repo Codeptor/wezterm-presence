@@ -3,11 +3,13 @@ use std::collections::HashSet;
 use std::process::Command;
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub struct Pane {
+    #[allow(dead_code)]
     pub window_id: u64,
     pub tab_id: u64,
+    #[allow(dead_code)]
     pub pane_id: u64,
+    #[allow(dead_code)]
     pub workspace: String,
     pub title: String,
     pub cwd: String,
@@ -27,10 +29,9 @@ pub fn extract_process_name(title: &str) -> &str {
 }
 
 pub fn prettify_cwd(cwd: &str) -> String {
-    let path = if cwd.starts_with("file:///") {
-        &cwd[8..]
-    } else if cwd.starts_with("file://") {
-        let after_scheme = &cwd[7..];
+    let path = if let Some(stripped) = cwd.strip_prefix("file:///") {
+        stripped
+    } else if let Some(after_scheme) = cwd.strip_prefix("file://") {
         if let Some(slash_pos) = after_scheme.find('/') {
             &after_scheme[slash_pos..]
         } else {

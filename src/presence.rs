@@ -50,7 +50,7 @@ impl Presence {
         }
 
         let (details_text, small_icon) = config.resolve_process(&state.process_name);
-        let state_text = format!("{}", state.cwd);
+        let state_text = &state.cwd;
         let large_text = format!("{} tabs \u{00b7} {} panes", state.tab_count, state.pane_count);
 
         let activity = Activity::new()

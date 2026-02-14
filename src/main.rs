@@ -85,10 +85,7 @@ fn install_startup() {
 
     let startup_dir = dirs::config_dir()
         .map(|p| {
-            p.parent()
-                .unwrap()
-                .join("Roaming")
-                .join("Microsoft")
+            p.join("Microsoft")
                 .join("Windows")
                 .join("Start Menu")
                 .join("Programs")

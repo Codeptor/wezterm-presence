@@ -61,8 +61,8 @@ pub fn poll() -> Option<TerminalState> {
     // Check if file exists and is fresh (modified within last 10 seconds)
     let metadata = std::fs::metadata(&path).ok()?;
     let age = metadata.modified().ok()?.elapsed().ok()?;
-    if age.as_secs() > 10 {
-        // File is stale -- WezTerm probably closed
+    if age.as_secs() > 120 {
+        // File is stale for 2+ minutes -- WezTerm probably closed
         return None;
     }
 

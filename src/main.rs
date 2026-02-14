@@ -132,7 +132,7 @@ fn main() {
     // Start the presence loop in a background thread
     let running = Arc::new(AtomicBool::new(true));
     let running_clone = running.clone();
-    let _worker = thread::spawn(move || {
+    let worker = thread::spawn(move || {
         run_presence_loop(running_clone);
     });
 
@@ -178,6 +178,9 @@ fn main() {
             thread::sleep(Duration::from_millis(100));
         }
     }
+
+    // Wait for worker to clear presence before exiting
+    let _ = worker.join();
 }
 
 fn install_startup() {

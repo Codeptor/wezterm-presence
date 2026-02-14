@@ -75,10 +75,9 @@ impl Presence {
         if !self.connected {
             return;
         }
-        if let Err(e) = self.client.clear_activity() {
-            eprintln!("Failed to clear activity: {}", e);
-            self.connected = false;
-        }
+        let _ = self.client.clear_activity();
+        let _ = self.client.close();
+        self.connected = false;
     }
 
     pub fn reset_session_timer(&mut self) {

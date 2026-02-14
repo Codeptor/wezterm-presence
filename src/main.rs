@@ -47,10 +47,10 @@ fn run_presence_loop(running: Arc<AtomicBool>) {
     };
 
     let mut was_running = false;
+    let mut last_state: Option<wezterm::TerminalState> = None;
 
     while running.load(Ordering::Relaxed) {
         if !presence.connect() {
-            // Discord not available, retry after delay
             for _ in 0..10 {
                 if !running.load(Ordering::Relaxed) {
                     break;
@@ -66,12 +66,17 @@ fn run_presence_loop(running: Arc<AtomicBool>) {
                     presence.reset_session_timer();
                     was_running = true;
                 }
-                presence.update(&state, &config);
+                // Only update Discord if state actually changed
+                if last_state.as_ref() != Some(&state) {
+                    presence.update(&state, &config);
+                    last_state = Some(state);
+                }
             }
             None => {
                 if was_running {
                     presence.clear();
                     was_running = false;
+                    last_state = None;
                 }
             }
         }

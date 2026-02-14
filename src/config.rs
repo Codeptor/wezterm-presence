@@ -25,7 +25,7 @@ fn default_app_id() -> String {
 }
 
 fn default_poll_interval() -> u64 {
-    3
+    1
 }
 
 fn default_processes() -> HashMap<String, ProcessMapping> {
@@ -74,7 +74,7 @@ impl Config {
         let content = r#"# WezTerm Discord Rich Presence Config
 
 # Poll interval in seconds
-poll_interval = 3
+poll_interval = 1
 
 # Discord Application ID (optional, has a built-in default)
 # discord_app_id = "YOUR_APP_ID"
@@ -159,7 +159,7 @@ mod tests {
     #[test]
     fn test_default_config_has_entries() {
         let config = Config::default();
-        assert_eq!(config.poll_interval, 3);
+        assert_eq!(config.poll_interval, 1);
         assert_eq!(config.discord_app_id, DEFAULT_APP_ID);
         assert!(config.processes.contains_key("claude"));
         assert!(config.processes.contains_key("nvim"));

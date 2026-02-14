@@ -1,19 +1,4 @@
 use serde::Deserialize;
-use std::collections::HashSet;
-use std::process::Command;
-
-#[derive(Debug, Deserialize)]
-pub struct Pane {
-    #[allow(dead_code)]
-    pub window_id: u64,
-    pub tab_id: u64,
-    #[allow(dead_code)]
-    pub pane_id: u64,
-    #[allow(dead_code)]
-    pub workspace: String,
-    pub title: String,
-    pub cwd: String,
-}
 
 #[derive(Debug, Clone)]
 pub struct TerminalState {
@@ -23,12 +8,18 @@ pub struct TerminalState {
     pub pane_count: usize,
 }
 
-pub fn extract_process_name(title: &str) -> &str {
-    let first_token = title.split_whitespace().next().unwrap_or(title);
-    first_token.rsplit('/').next().unwrap_or(first_token)
+/// JSON structure written by WezTerm's Lua update-status handler.
+#[derive(Debug, Deserialize)]
+struct LuaState {
+    process: String,
+    cwd: String,
+    tabs: usize,
+    panes: usize,
 }
 
+/// Prettify a cwd path: collapse /home/<user>/... to ~/...
 pub fn prettify_cwd(cwd: &str) -> String {
+    // Strip file:// URI prefix if present
     let path = if let Some(stripped) = cwd.strip_prefix("file:///") {
         stripped
     } else if let Some(after_scheme) = cwd.strip_prefix("file://") {
@@ -56,151 +47,65 @@ pub fn prettify_cwd(cwd: &str) -> String {
     path.to_string()
 }
 
-impl TerminalState {
-    pub fn from_panes(panes: Vec<Pane>) -> Self {
-        let tab_count = panes.iter().map(|p| p.tab_id).collect::<HashSet<_>>().len();
-        let pane_count = panes.len();
-        let active = &panes[0];
-        let process_name = extract_process_name(&active.title).to_string();
-        let cwd = prettify_cwd(&active.cwd);
-        Self { process_name, cwd, tab_count, pane_count }
-    }
+/// Get the state file path: %LOCALAPPDATA%\wezterm-presence\state.json
+fn state_file_path() -> Option<std::path::PathBuf> {
+    let local_app_data = std::env::var("LOCALAPPDATA").ok()?;
+    Some(std::path::Path::new(&local_app_data).join("wezterm-presence").join("state.json"))
 }
 
-/// Find the WezTerm GUI socket path.
-/// Works around a Windows bug where only the filename is published.
-/// See: https://github.com/wezterm/wezterm/issues/4456
-fn find_socket() -> Option<String> {
-    let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok()?;
-    let wezterm_dir = std::path::Path::new(&home).join(".local/share/wezterm");
-    let entries = std::fs::read_dir(&wezterm_dir).ok()?;
-
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if name.starts_with("gui-sock-") {
-            return Some(entry.path().to_string_lossy().into_owned());
-        }
-    }
-    None
-}
-
+/// Poll WezTerm state by reading the JSON file written by the Lua config.
+/// Returns None if WezTerm isn't running or the file is stale.
 pub fn poll() -> Option<TerminalState> {
-    let mut cmd = Command::new("wezterm");
-    cmd.args(["cli", "list", "--format", "json"]);
+    let path = state_file_path()?;
 
-    // Set WEZTERM_UNIX_SOCKET if not already set (Windows socket bug workaround)
-    if std::env::var("WEZTERM_UNIX_SOCKET").is_err() {
-        if let Some(sock) = find_socket() {
-            cmd.env("WEZTERM_UNIX_SOCKET", &sock);
-        }
-    }
-
-    let output = match cmd.output() {
-        Ok(o) => o,
-        Err(e) => {
-            eprintln!("Failed to run 'wezterm cli list': {}", e);
-            return None;
-        }
-    };
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        eprintln!("wezterm cli list failed ({}): {}", output.status, stderr.trim());
+    // Check if file exists and is fresh (modified within last 10 seconds)
+    let metadata = std::fs::metadata(&path).ok()?;
+    let age = metadata.modified().ok()?.elapsed().ok()?;
+    if age.as_secs() > 10 {
+        // File is stale -- WezTerm probably closed
         return None;
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let panes: Vec<Pane> = match serde_json::from_str(&stdout) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("Failed to parse wezterm JSON: {}", e);
-            return None;
-        }
-    };
+    let contents = std::fs::read_to_string(&path).ok()?;
+    let lua_state: LuaState = serde_json::from_str(&contents).ok()?;
 
-    if panes.is_empty() {
+    if lua_state.process.is_empty() || lua_state.process == "unknown" {
         return None;
     }
 
-    Some(TerminalState::from_panes(panes))
+    Some(TerminalState {
+        process_name: lua_state.process,
+        cwd: prettify_cwd(&lua_state.cwd),
+        tab_count: lua_state.tabs,
+        pane_count: lua_state.panes,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const SAMPLE_JSON: &str = r#"[
-        {
-            "window_id": 0,
-            "tab_id": 0,
-            "pane_id": 0,
-            "workspace": "default",
-            "size": { "rows": 40, "cols": 140 },
-            "title": "nvim src/main.rs",
-            "cwd": "file://DESKTOP-ABC/home/esoteric/wezterm-presence"
-        },
-        {
-            "window_id": 0,
-            "tab_id": 1,
-            "pane_id": 1,
-            "workspace": "default",
-            "size": { "rows": 40, "cols": 140 },
-            "title": "zsh",
-            "cwd": "file://DESKTOP-ABC/home/esoteric"
-        },
-        {
-            "window_id": 0,
-            "tab_id": 1,
-            "pane_id": 2,
-            "workspace": "default",
-            "size": { "rows": 20, "cols": 140 },
-            "title": "cargo build",
-            "cwd": "file://DESKTOP-ABC/home/esoteric/wezterm-presence"
-        }
-    ]"#;
-
     #[test]
-    fn test_parse_panes() {
-        let panes: Vec<Pane> = serde_json::from_str(SAMPLE_JSON).unwrap();
-        assert_eq!(panes.len(), 3);
-        assert_eq!(panes[0].title, "nvim src/main.rs");
-        assert_eq!(panes[0].tab_id, 0);
+    fn test_parse_lua_state() {
+        let json = r#"{"process":"nvim","cwd":"/home/esoteric/project","tabs":3,"panes":4}"#;
+        let state: LuaState = serde_json::from_str(json).unwrap();
+        assert_eq!(state.process, "nvim");
+        assert_eq!(state.cwd, "/home/esoteric/project");
+        assert_eq!(state.tabs, 3);
+        assert_eq!(state.panes, 4);
     }
 
     #[test]
-    fn test_extract_process_name_simple() {
-        assert_eq!(extract_process_name("zsh"), "zsh");
-        assert_eq!(extract_process_name("bash"), "bash");
+    fn test_prettify_cwd_wsl() {
+        assert_eq!(prettify_cwd("/home/esoteric/wezterm-presence"), "~/wezterm-presence");
+        assert_eq!(prettify_cwd("/home/esoteric"), "~");
     }
 
     #[test]
-    fn test_extract_process_name_with_args() {
-        assert_eq!(extract_process_name("nvim src/main.rs"), "nvim");
-        assert_eq!(extract_process_name("cargo build"), "cargo");
-        assert_eq!(extract_process_name("python3 script.py"), "python3");
-    }
-
-    #[test]
-    fn test_extract_process_name_with_path() {
-        assert_eq!(extract_process_name("/usr/bin/nvim"), "nvim");
-        assert_eq!(extract_process_name("/usr/bin/nvim src/main.rs"), "nvim");
-    }
-
-    #[test]
-    fn test_extract_process_name_ssh_prompt() {
-        assert_eq!(extract_process_name("esoteric@DESKTOP: ~/projects"), "esoteric@DESKTOP:");
-    }
-
-    #[test]
-    fn test_prettify_cwd() {
+    fn test_prettify_cwd_file_uri() {
         assert_eq!(
             prettify_cwd("file://DESKTOP-ABC/home/esoteric/wezterm-presence"),
             "~/wezterm-presence"
-        );
-        assert_eq!(
-            prettify_cwd("file://DESKTOP-ABC/home/esoteric"),
-            "~"
         );
         assert_eq!(
             prettify_cwd("file:///C:/Users/bhanu/projects"),
@@ -209,12 +114,8 @@ mod tests {
     }
 
     #[test]
-    fn test_build_terminal_state() {
-        let panes: Vec<Pane> = serde_json::from_str(SAMPLE_JSON).unwrap();
-        let state = TerminalState::from_panes(panes);
-        assert_eq!(state.tab_count, 2);
-        assert_eq!(state.pane_count, 3);
-        assert_eq!(state.process_name, "nvim");
-        assert_eq!(state.cwd, "~/wezterm-presence");
+    fn test_prettify_cwd_plain_path() {
+        assert_eq!(prettify_cwd("/tmp/something"), "/tmp/something");
+        assert_eq!(prettify_cwd("C:/Users/bhanu"), "C:/Users/bhanu");
     }
 }

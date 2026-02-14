@@ -67,18 +67,57 @@ impl TerminalState {
     }
 }
 
+/// Find the WezTerm GUI socket path.
+/// Works around a Windows bug where only the filename is published.
+/// See: https://github.com/wezterm/wezterm/issues/4456
+fn find_socket() -> Option<String> {
+    let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok()?;
+    let wezterm_dir = std::path::Path::new(&home).join(".local/share/wezterm");
+    let entries = std::fs::read_dir(&wezterm_dir).ok()?;
+
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with("gui-sock-") {
+            return Some(entry.path().to_string_lossy().into_owned());
+        }
+    }
+    None
+}
+
 pub fn poll() -> Option<TerminalState> {
-    let output = Command::new("wezterm")
-        .args(["cli", "list", "--format", "json"])
-        .output()
-        .ok()?;
+    let mut cmd = Command::new("wezterm");
+    cmd.args(["cli", "list", "--format", "json"]);
+
+    // Set WEZTERM_UNIX_SOCKET if not already set (Windows socket bug workaround)
+    if std::env::var("WEZTERM_UNIX_SOCKET").is_err() {
+        if let Some(sock) = find_socket() {
+            cmd.env("WEZTERM_UNIX_SOCKET", &sock);
+        }
+    }
+
+    let output = match cmd.output() {
+        Ok(o) => o,
+        Err(e) => {
+            eprintln!("Failed to run 'wezterm cli list': {}", e);
+            return None;
+        }
+    };
 
     if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        eprintln!("wezterm cli list failed ({}): {}", output.status, stderr.trim());
         return None;
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let panes: Vec<Pane> = serde_json::from_str(&stdout).ok()?;
+    let panes: Vec<Pane> = match serde_json::from_str(&stdout) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Failed to parse wezterm JSON: {}", e);
+            return None;
+        }
+    };
 
     if panes.is_empty() {
         return None;

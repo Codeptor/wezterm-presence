@@ -8,13 +8,20 @@ pub struct ProcessMapping {
     pub icon: String,
 }
 
+pub const DEFAULT_APP_ID: &str = "1472315297363923035";
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
     #[serde(default = "default_poll_interval")]
     pub poll_interval: u64,
+    #[serde(default = "default_app_id")]
     pub discord_app_id: String,
     #[serde(default = "default_processes")]
     pub processes: HashMap<String, ProcessMapping>,
+}
+
+fn default_app_id() -> String {
+    DEFAULT_APP_ID.to_string()
 }
 
 fn default_poll_interval() -> u64 {
@@ -55,7 +62,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             poll_interval: default_poll_interval(),
-            discord_app_id: String::new(),
+            discord_app_id: DEFAULT_APP_ID.to_string(),
             processes: default_processes(),
         }
     }
@@ -65,11 +72,12 @@ impl Config {
     /// Write a default config.toml to the given path.
     pub fn write_default(path: &std::path::Path) -> std::io::Result<()> {
         let content = r#"# WezTerm Discord Rich Presence Config
-# Get your Discord Application ID from https://discord.com/developers/applications
-discord_app_id = "YOUR_APP_ID"
 
 # Poll interval in seconds
 poll_interval = 3
+
+# Discord Application ID (optional, has a built-in default)
+# discord_app_id = "YOUR_APP_ID"
 
 # Process name -> display text and icon mappings
 # Icon names must match assets uploaded to your Discord application
@@ -152,6 +160,7 @@ mod tests {
     fn test_default_config_has_entries() {
         let config = Config::default();
         assert_eq!(config.poll_interval, 3);
+        assert_eq!(config.discord_app_id, DEFAULT_APP_ID);
         assert!(config.processes.contains_key("claude"));
         assert!(config.processes.contains_key("nvim"));
         assert!(config.processes.contains_key("zsh"));

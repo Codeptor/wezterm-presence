@@ -31,14 +31,6 @@ fn main() {
     }
 
     let config = config::Config::load();
-
-    if config.discord_app_id.is_empty() || config.discord_app_id == "YOUR_APP_ID" {
-        eprintln!("Error: discord_app_id not set in config.toml");
-        eprintln!("Create a Discord application at https://discord.com/developers/applications");
-        eprintln!("Then set discord_app_id in config.toml next to this executable.");
-        std::process::exit(1);
-    }
-
     let poll_interval = Duration::from_secs(config.poll_interval);
     let mut presence = match presence::Presence::new(&config.discord_app_id) {
         Ok(p) => p,

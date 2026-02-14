@@ -16,9 +16,18 @@ pub struct Config {
     pub poll_interval: u64,
     #[serde(default = "default_app_id")]
     pub discord_app_id: String,
+    #[serde(default = "default_idle_timeout")]
+    pub idle_timeout: u64,
     #[serde(default = "default_processes")]
     pub processes: HashMap<String, ProcessMapping>,
 }
+
+fn default_idle_timeout() -> u64 {
+    120
+}
+
+/// Shell process names that can transition to idle.
+pub const SHELLS: &[&str] = &["zsh", "bash", "fish", "sh", "pwsh", "powershell"];
 
 fn default_app_id() -> String {
     DEFAULT_APP_ID.to_string()
@@ -48,6 +57,7 @@ fn default_processes() -> HashMap<String, ProcessMapping> {
         ("htop", "Monitoring System", "terminal"),
         ("btop", "Monitoring System", "terminal"),
         ("make", "Running Make", "terminal"),
+        ("idle", "Idling", "terminal"),
     ];
     for (name, text, icon) in entries {
         m.insert(name.to_string(), ProcessMapping {
@@ -63,6 +73,7 @@ impl Default for Config {
         Self {
             poll_interval: default_poll_interval(),
             discord_app_id: DEFAULT_APP_ID.to_string(),
+            idle_timeout: default_idle_timeout(),
             processes: default_processes(),
         }
     }
@@ -75,6 +86,9 @@ impl Config {
 
 # Poll interval in seconds
 poll_interval = 1
+
+# Seconds at a shell prompt before showing "Idling" (0 to disable)
+idle_timeout = 120
 
 # Discord Application ID (optional, has a built-in default)
 # discord_app_id = "YOUR_APP_ID"
@@ -99,6 +113,7 @@ ssh = { text = "Connected via SSH", icon = "ssh" }
 htop = { text = "Monitoring System", icon = "terminal" }
 btop = { text = "Monitoring System", icon = "terminal" }
 make = { text = "Running Make", icon = "terminal" }
+idle = { text = "Idling", icon = "terminal" }
 "#;
         std::fs::write(path, content)
     }

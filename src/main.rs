@@ -48,6 +48,8 @@ fn run_presence_loop(running: Arc<AtomicBool>) {
 
     let mut was_running = false;
     let mut last_state: Option<wezterm::TerminalState> = None;
+    let mut shell_since: Option<std::time::Instant> = None;
+    let mut is_idle = false;
 
     while running.load(Ordering::Relaxed) {
         if !presence.connect() {
@@ -61,11 +63,33 @@ fn run_presence_loop(running: Arc<AtomicBool>) {
         }
 
         match wezterm::poll() {
-            Some(state) => {
+            Some(mut state) => {
                 if !was_running {
                     presence.reset_session_timer();
                     was_running = true;
                 }
+
+                // Idle detection: track time spent at a shell prompt
+                let in_shell = config::SHELLS.contains(&state.process_name.as_str());
+                if in_shell {
+                    let since = shell_since.get_or_insert_with(std::time::Instant::now);
+                    let idle_now = config.idle_timeout > 0
+                        && since.elapsed().as_secs() >= config.idle_timeout;
+                    if idle_now {
+                        state.process_name = "idle".to_string();
+                    }
+                    if idle_now != is_idle {
+                        is_idle = idle_now;
+                        last_state = None; // force update
+                    }
+                } else {
+                    shell_since = None;
+                    if is_idle {
+                        is_idle = false;
+                        last_state = None;
+                    }
+                }
+
                 // Only update Discord if state actually changed
                 if last_state.as_ref() != Some(&state) {
                     presence.update(&state, &config);
@@ -77,6 +101,8 @@ fn run_presence_loop(running: Arc<AtomicBool>) {
                     presence.clear();
                     was_running = false;
                     last_state = None;
+                    shell_since = None;
+                    is_idle = false;
                 }
             }
         }
